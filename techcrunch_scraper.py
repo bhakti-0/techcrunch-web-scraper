@@ -27,14 +27,23 @@ logging.basicConfig(
 def setup_driver():
     options = Options()
     options.add_argument("--start-maximized")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+
+    driver = webdriver.Chrome(options=options)
+    driver.set_page_load_timeout(30)
+    return driver
+
 
 # ---------------- SCRAPER ---------------- #
 
 def scrape_articles(driver, scrolls=3):
     logging.info("Opening TechCrunch website")
     driver.get(URL)
-    time.sleep(5)
+    time.sleep(10)
 
     for i in range(scrolls):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -91,9 +100,13 @@ def main():
     driver = setup_driver()
     try:
         articles = scrape_articles(driver)
+        if not articles:
+            logging.warning("No articles scraped, creating empty CSV")
         save_to_csv(articles)
+    except Exception as e:
+        logging.error(f"Script failed: {e}")
+        save_to_csv([])   # forces CSV creation
     finally:
         driver.quit()
-
 if __name__ == "__main__":
     main()
