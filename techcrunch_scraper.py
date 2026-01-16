@@ -40,49 +40,58 @@ def setup_driver():
 
 # ---------------- SCRAPER ---------------- #
 
-def scrape_articles(driver, scrolls=3):
+def scrape_articles(driver, scrolls=2):
     logging.info("Opening TechCrunch website")
     driver.get(URL)
-    time.sleep(10)
 
+    # Wait longer for real content
+    time.sleep(12)
+
+    # Scroll to load more articles
     for i in range(scrolls):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)
+        time.sleep(4)
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
-    articles = soup.select("article")
+
+    # --- BETTER SELECTORS FOR TECHCRUNCH ---
+    articles = soup.select("div.wp-block-tc23-post-picker article")
 
     data = []
 
     for article in articles:
         try:
-            title = article.find("h2")
-            title_text = title.text.strip() if title else "N/A"
+            # Title
+            title_tag = article.find("h2")
+            title = title_tag.text.strip() if title_tag else "N/A"
 
-            link = title.find("a")["href"] if title and title.find("a") else "N/A"
+            # Link
+            link = (
+                title_tag.find("a")["href"]
+                if title_tag and title_tag.find("a")
+                else "N/A"
+            )
 
-            author = article.find("a", class_="river-byline__authors")
-            author_text = author.text.strip() if author else "N/A"
+            # Author
+            author_tag = article.select_one("a.river-byline__authors")
+            author = author_tag.text.strip() if author_tag else "N/A"
 
-            date = article.find("time")
-            date_text = date["datetime"] if date else "N/A"
+            # Date
+            date_tag = article.find("time")
+            date = date_tag["datetime"] if date_tag else "N/A"
 
-            description = article.find("p")
-            desc_text = description.text.strip() if description else "N/A"
+            # Short description
+            desc_tag = article.find("p")
+            description = desc_tag.text.strip() if desc_tag else "N/A"
 
-            data.append([
-                title_text,
-                author_text,
-                date_text,
-                link,
-                desc_text
-            ])
+            data.append([title, author, date, link, description])
 
         except Exception as e:
             logging.error(f"Error parsing article: {e}")
 
     logging.info(f"Scraped {len(data)} articles")
     return data
+
 
 # ---------------- STORAGE ---------------- #
 
