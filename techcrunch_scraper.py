@@ -12,7 +12,49 @@ from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 
 
+def save_raw_html(driver, filename="techcrunch_page.html"):
+    html = driver.page_source
+
+    # Normalize before saving
+    html = unicodedata.normalize("NFKC", html)
+
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    logging.info(f"Raw HTML saved to {filename} in UTF-8")
+import unicodedata
+
+def clean_text(text):
+    """
+    Normalize and clean scraped text to avoid encoding issues.
+    Converts smart quotes, special dashes, and weird unicode characters
+    into safe, standard equivalents.
+    """
+    if not text:
+        return ""
+
+    # Normalize unicode characters to standard form
+    text = unicodedata.normalize("NFKC", text)
+
+    # Replace common problematic characters
+    replacements = {
+        "’": "'",
+        "“": '"',
+        "”": '"',
+        "—": "-",
+        "–": "-",
+        "…": "...",
+        " ": " ",   # non-breaking space
+    }
+
+    for bad, good in replacements.items():
+        text = text.replace(bad, good)
+
+    return text.strip()
+
+
 # ---------------- CONFIG ---------------- #
+
 
 URL = "https://techcrunch.com/"
 OUTPUT_FILE = "techcrunch_articles.csv"
@@ -44,47 +86,47 @@ def scrape_articles(driver, scrolls=2):
     logging.info("Opening TechCrunch website")
     driver.get(URL)
 
-    # Wait longer for real content
     time.sleep(12)
 
-    # Scroll to load more articles
-    for i in range(scrolls):
+    for _ in range(scrolls):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(4)
 
+    # Save what Selenium actually received
+    save_raw_html(driver)
+
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
-    # --- BETTER SELECTORS FOR TECHCRUNCH ---
-    articles = soup.select("div.wp-block-tc23-post-picker article")
+    articles = soup.find_all("article")
 
     data = []
 
     for article in articles:
         try:
-            # Title
-            title_tag = article.find("h2")
+            title_tag = article.find(["h1", "h2"])
             title = title_tag.text.strip() if title_tag else "N/A"
 
-            # Link
             link = (
                 title_tag.find("a")["href"]
                 if title_tag and title_tag.find("a")
                 else "N/A"
             )
 
-            # Author
-            author_tag = article.select_one("a.river-byline__authors")
-            author = author_tag.text.strip() if author_tag else "N/A"
-
-            # Date
             date_tag = article.find("time")
             date = date_tag["datetime"] if date_tag else "N/A"
 
-            # Short description
             desc_tag = article.find("p")
             description = desc_tag.text.strip() if desc_tag else "N/A"
 
-            data.append([title, author, date, link, description])
+            if title and link != "N/A":
+                data.append([
+    clean_text(title),
+   
+    clean_text(date),
+    clean_text(link),
+    clean_text(description)
+])
+
 
         except Exception as e:
             logging.error(f"Error parsing article: {e}")
@@ -99,9 +141,14 @@ def save_to_csv(data):
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(["Title", "Author", "Date", "URL", "Description"])
-        writer.writerows(data)
 
-    logging.info(f"Data saved to {OUTPUT_FILE}")
+        for row in data:
+            # Ensure every value is UTF-8 safe before writing
+            safe_row = [clean_text(cell) for cell in row]
+            writer.writerow(safe_row)
+
+    logging.info(f"Data saved to {OUTPUT_FILE} in UTF-8")
+
 
 # ---------------- MAIN ---------------- #
 
@@ -110,12 +157,13 @@ def main():
     try:
         articles = scrape_articles(driver)
         if not articles:
-            logging.warning("No articles scraped, creating empty CSV")
+            logging.warning("No articles scraped — writing empty CSV")
         save_to_csv(articles)
     except Exception as e:
         logging.error(f"Script failed: {e}")
-        save_to_csv([])   # forces CSV creation
+        save_to_csv([])   # ensures file exists
     finally:
         driver.quit()
+
 if __name__ == "__main__":
     main()
